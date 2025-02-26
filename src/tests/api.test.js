@@ -6,6 +6,7 @@ const prisma = new PrismaClient();
 const bcrypt = require('bcryptjs');
 
 let csrfToken;
+let csrfCookieValue;
 
 beforeAll(async () => {
   // Delete referrals first, then users to respect foreign key constraints
@@ -15,6 +16,8 @@ beforeAll(async () => {
   // Get CSRF token first
   const csrfRes = await request(app).get('/api/csrf-token');
   csrfToken = csrfRes.body.csrfToken;
+  const csrfCookie = csrfRes.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
+  csrfCookieValue = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : null;
 }, 10000);
 
 beforeEach(async () => {
@@ -25,6 +28,8 @@ beforeEach(async () => {
   // Get fresh CSRF token for each test
   const csrfRes = await request(app).get('/api/csrf-token');
   csrfToken = csrfRes.body.csrfToken;
+  const csrfCookie = csrfRes.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
+  csrfCookieValue = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : null;
   
   // Create a test user for tests that need an existing user
   await request(app)
@@ -44,6 +49,11 @@ describe('API Endpoints', () => {
   let userToken;
 
   test('POST /api/register - Successful registration', async () => {
+    const csrfRes = await request(app).get('/api/csrf-token');
+    csrfToken = csrfRes.body.csrfToken;
+    const csrfCookie = csrfRes.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
+    csrfCookieValue = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : null;
+    
     const res = await request(app)
       .post('/api/register')
       .set('x-csrf-token', csrfToken)
@@ -54,22 +64,38 @@ describe('API Endpoints', () => {
   }, 10000);
 
   test('POST /api/login - Successful login', async () => {
+    const csrfRes = await request(app).get('/api/csrf-token');
+    csrfToken = csrfRes.body.csrfToken;
+    const csrfCookie = csrfRes.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
+    csrfCookieValue = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : null;
+    
     const res = await request(app)
       .post('/api/login')
       .set('x-csrf-token', csrfToken)
       .send({ identifier: 'testuser', password: 'password123' });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('id');
-    userToken = res.headers['set-cookie'][0].split(';')[0].split('=')[1];
+    
+    const cookies = res.headers['set-cookie'];
+    const tokenCookie = cookies.find(cookie => cookie.startsWith('token='));
+    userToken = tokenCookie ? tokenCookie.split(';')[0].split('=')[1] : null;
   }, 10000);
 
   test('GET /api/referrals - Fetch referrals', async () => {
+    const csrfRes = await request(app).get('/api/csrf-token');
+    csrfToken = csrfRes.body.csrfToken;
+    const csrfCookie = csrfRes.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
+    csrfCookieValue = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : null;
+    
     // Login to get a token first
     const loginRes = await request(app)
       .post('/api/login')
       .set('x-csrf-token', csrfToken)
       .send({ identifier: 'testuser', password: 'password123' });
-    const token = loginRes.headers['set-cookie'][0].split(';')[0].split('=')[1];
+    
+    const cookies = loginRes.headers['set-cookie'];
+    const tokenCookie = cookies.find(cookie => cookie.startsWith('token='));
+    const token = tokenCookie ? tokenCookie.split(';')[0].split('=')[1] : null;
     
     // Create referrer with referral code
     const referrer = await prisma.user.create({
@@ -101,12 +127,20 @@ describe('API Endpoints', () => {
   }, 10000);
 
   test('GET /api/referral-stats - Fetch stats', async () => {
+    const csrfRes = await request(app).get('/api/csrf-token');
+    csrfToken = csrfRes.body.csrfToken;
+    const csrfCookie = csrfRes.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
+    csrfCookieValue = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : null;
+    
     // Login to get a token first
     const loginRes = await request(app)
       .post('/api/login')
       .set('x-csrf-token', csrfToken)
       .send({ identifier: 'testuser', password: 'password123' });
-    const token = loginRes.headers['set-cookie'][0].split(';')[0].split('=')[1];
+    
+    const cookies = loginRes.headers['set-cookie'];
+    const tokenCookie = cookies.find(cookie => cookie.startsWith('token='));
+    const token = tokenCookie ? tokenCookie.split(';')[0].split('=')[1] : null;
     
     const res = await request(app)
       .get('/api/referral-stats')

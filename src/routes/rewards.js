@@ -39,15 +39,14 @@ async function addReferralReward(userId, referredUserId) {
     });
     
     // Update referral status to successful
-    await prisma.referrals.update({
-      where: {
-        referrer_id_referred_user_id: {
+    await prisma.referrals.updateMany({
+        where: {
           referrer_id: userId,
           referred_user_id: referredUserId
-        }
-      },
-      data: { status: 'successful' }
-    });
+        },
+        data: { status: 'successful' }
+      });
+      
     
     // Clear cache for the user since their rewards have changed
     clearUserCache(userId);

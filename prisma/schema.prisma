@@ -32,6 +32,10 @@ model Referrals {
   // Relationships
   referrer         User      @relation("Referrer", fields: [referrer_id], references: [id])
   referred_user    User      @relation("ReferredUser", fields: [referred_user_id], references: [id])
+
+  // Add unique constraint for composite key
+  @@unique([referrer_id, referred_user_id])
+
 }
 
 model Reward {
