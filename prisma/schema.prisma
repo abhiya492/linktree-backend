@@ -1,0 +1,46 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             Int        @id @default(autoincrement())
+  email          String     @unique
+  username       String     @unique
+  password_hash  String
+  referral_code  String     @unique
+  created_at     DateTime   @default(now())
+  
+  // Relationships
+  referrals_made  Referrals[] @relation("Referrer")
+  referrals_from  Referrals[] @relation("ReferredUser")
+  rewards         Reward[]
+}
+
+model Referrals {
+  id               Int       @id @default(autoincrement())
+  referrer_id      Int
+  referred_user_id Int
+  date_referred    DateTime  @default(now())
+  status           String    @default("pending") // pending, successful, expired
+  
+  // Relationships
+  referrer         User      @relation("Referrer", fields: [referrer_id], references: [id])
+  referred_user    User      @relation("ReferredUser", fields: [referred_user_id], references: [id])
+}
+
+model Reward {
+  id          Int       @id @default(autoincrement())
+  user_id     Int
+  amount      Int       // Can represent credits, points, etc.
+  description String
+  created_at  DateTime  @default(now())
+  
+  // Relationship
+  user        User      @relation(fields: [user_id], references: [id])
+}
