@@ -4,6 +4,9 @@ const { cleanupDatabase } = require('./test-utils');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// Mock email sending to prevent actual email attempts during tests
+jest.mock('../utils/sendEmail', () => jest.fn(() => Promise.resolve()));
+
 beforeAll(async () => {
   // Connect to test database
   try {

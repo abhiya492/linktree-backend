@@ -5,54 +5,74 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const bcrypt = require('bcryptjs');
 
+// Mock email sending to prevent actual email attempts
+jest.mock('../utils/sendEmail', () => jest.fn(() => Promise.resolve()));
+
 let csrfToken;
 let csrfCookie;
 
 beforeAll(async () => {
-  // Delete referrals first, then users to respect foreign key constraints
-  await prisma.referrals.deleteMany();
-  await prisma.user.deleteMany();
-  
-  // Get CSRF token first
-  const csrfRes = await request(app).get('/api/csrf-token');
-  csrfToken = csrfRes.body.csrfToken;
-  csrfCookie = csrfRes.headers['set-cookie'].find(c => c.startsWith('csrfToken='));
+  try {
+    // Delete referrals first, then users to respect foreign key constraints
+    await prisma.referrals.deleteMany();
+    // Check for any other tables that might have foreign key relationships
+    await prisma.reward?.deleteMany().catch(e => console.log('No rewards table or already empty'));
+    await prisma.user.deleteMany();
+    
+    // Get CSRF token first
+    const csrfRes = await request(app).get('/api/csrf-token');
+    csrfToken = csrfRes.body.csrfToken;
+    csrfCookie = csrfRes.headers['set-cookie'].find(c => c.startsWith('csrfToken='));
+  } catch (err) {
+    console.error('Setup error:', err);
+  }
 }, 10000);
 
 beforeEach(async () => {
-  // Clear both tables before each test
-  await prisma.referrals.deleteMany();
-  await prisma.user.deleteMany();
-  
-  // Get fresh CSRF token for each test
-  const csrfRes = await request(app).get('/api/csrf-token');
-  csrfToken = csrfRes.body.csrfToken;
-  csrfCookie = csrfRes.headers['set-cookie'].find(c => c.startsWith('csrfToken='));
-  
-  // Create a test user for tests that need an existing user
-  const testUserRes = await request(app)
-    .post('/api/register')
-    .set('Cookie', csrfCookie)
-    .set('x-csrf-token', csrfToken)
-    .send({ email: 'test@example.com', username: 'testuser', password: 'Password123' });
-  
-  // Update CSRF cookie if needed
-  const updatedCsrfCookie = testUserRes.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
-  if (updatedCsrfCookie) {
-    csrfCookie = updatedCsrfCookie;
+  try {
+    // Clear both tables before each test
+    await prisma.referrals.deleteMany();
+    // Check for any other tables that might have foreign key relationships
+    await prisma.reward?.deleteMany().catch(e => console.log('No rewards table or already empty'));
+    await prisma.user.deleteMany();
+    
+    // Get fresh CSRF token for each test
+    const csrfRes = await request(app).get('/api/csrf-token');
+    csrfToken = csrfRes.body.csrfToken;
+    csrfCookie = csrfRes.headers['set-cookie'].find(c => c.startsWith('csrfToken='));
+    
+    // Create a test user for tests that need an existing user
+    const testUserRes = await request(app)
+      .post('/api/register')
+      .set('Cookie', csrfCookie)
+      .set('x-csrf-token', csrfToken)
+      .send({ email: 'test@example.com', username: 'testuser', password: 'Password123' });
+    
+    // Update CSRF cookie if needed
+    const updatedCsrfCookie = testUserRes.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
+    if (updatedCsrfCookie) {
+      csrfCookie = updatedCsrfCookie;
+    }
+    
+    // Get a fresh CSRF token after registration
+    const newCsrfRes = await request(app).get('/api/csrf-token');
+    csrfToken = newCsrfRes.body.csrfToken;
+    csrfCookie = newCsrfRes.headers['set-cookie'].find(c => c.startsWith('csrfToken='));
+  } catch (err) {
+    console.error('BeforeEach error:', err);
   }
-  
-  // Get a fresh CSRF token after registration
-  const newCsrfRes = await request(app).get('/api/csrf-token');
-  csrfToken = newCsrfRes.body.csrfToken;
-  csrfCookie = newCsrfRes.headers['set-cookie'].find(c => c.startsWith('csrfToken='));
 }, 10000);
 
 afterAll(async () => {
-  await prisma.referrals.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.$disconnect();
-  server.close();
+  try {
+    await prisma.referrals.deleteMany();
+    await prisma.reward?.deleteMany().catch(e => console.log('No rewards table or already empty'));
+    await prisma.user.deleteMany();
+    await prisma.$disconnect();
+    server.close();
+  } catch (err) {
+    console.error('Cleanup error:', err);
+  }
 }, 10000);
 
 describe('API Endpoints', () => {
@@ -60,27 +80,45 @@ describe('API Endpoints', () => {
   let authCookie;
 
   test('POST /api/register - Successful registration', async () => {
-    const csrfRes = await request(app).get('/api/csrf-token');
-    csrfToken = csrfRes.body.csrfToken;
-    csrfCookie = csrfRes.headers['set-cookie'].find(c => c.startsWith('csrfToken='));
-    
-    const res = await request(app)
-      .post('/api/register')
-      .set('Cookie', csrfCookie)
-      .set('x-csrf-token', csrfToken)
-      .send({ email: 'newuser@example.com', username: 'newuser', password: 'Password123' });
+    try {
+      // Get fresh CSRF token for this test
+      const csrfRes = await request(app).get('/api/csrf-token');
+      csrfToken = csrfRes.body.csrfToken;
+      csrfCookie = csrfRes.headers['set-cookie'].find(c => c.startsWith('csrfToken='));
       
-    expect(res.status).toBe(201);
-    expect(res.body).toHaveProperty('id');
-    expect(res.headers['set-cookie']).toBeDefined();
-    
-    // Update CSRF cookie if provided
-    const updatedCsrfCookie = res.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
-    if (updatedCsrfCookie) {
-      csrfCookie = updatedCsrfCookie;
+      // Clear any existing user with this email first to prevent conflicts
+      await prisma.user.deleteMany({
+        where: { email: 'newuser@example.com' }
+      });
+      
+      const res = await request(app)
+        .post('/api/register')
+        .set('Cookie', csrfCookie)
+        .set('x-csrf-token', csrfToken)
+        .send({ email: 'newuser@example.com', username: 'newuser', password: 'Password123' });
+      
+      // Log response for debugging if needed
+      if (res.status !== 201) {
+        console.log('Registration failed with status:', res.status);
+        console.log('Response body:', res.body);
+      }
+        
+      expect(res.status).toBe(201);
+      expect(res.body).toHaveProperty('id');
+      expect(res.headers['set-cookie']).toBeDefined();
+      
+      // Update CSRF cookie if provided
+      const updatedCsrfCookie = res.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
+      if (updatedCsrfCookie) {
+        csrfCookie = updatedCsrfCookie;
+      }
+    } catch (err) {
+      console.error('Registration test error:', err);
+      throw err;
     }
   }, 10000);
 
+  // Rest of the tests remain the same...
   test('POST /api/login - Successful login', async () => {
     const csrfRes = await request(app).get('/api/csrf-token');
     csrfToken = csrfRes.body.csrfToken;
