@@ -87,6 +87,14 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-module.exports = { app, server };
+if (process.env.NODE_ENV !== 'test') {
+  const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  module.exports = { app, server };
+} else {
+  // For tests, export the app without starting the server
+  // This allows tests to control when/if the server starts
+  const server = {
+    close: () => {} // Mock close method for tests
+  };
+  module.exports = { app, server };
+}

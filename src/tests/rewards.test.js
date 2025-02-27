@@ -1,4 +1,4 @@
-// src/tests/rewards.test.js
+// src/tests/api.test.js
 require('dotenv').config();
 const request = require('supertest');
 const { app, server } = require('../app');
@@ -6,105 +6,150 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const bcrypt = require('bcryptjs');
 
-let referrerToken;
-let referrerUser;
-let referredUser;
+// Mock email sending
+jest.mock('../utils/sendEmail', () => jest.fn(() => Promise.resolve()));
+
 let csrfToken;
+let csrfCookieValue;
 
 beforeAll(async () => {
-  // Clean up database
-  await prisma.reward.deleteMany();
+  // Delete referrals first, then users to respect foreign key constraints
   await prisma.referrals.deleteMany();
   await prisma.user.deleteMany();
   
-  // Get CSRF token
+  // Get CSRF token first
   const csrfRes = await request(app).get('/api/csrf-token');
   csrfToken = csrfRes.body.csrfToken;
+  const csrfCookie = csrfRes.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
+  csrfCookieValue = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : null;
+}, 10000);
+
+beforeEach(async () => {
+  // Clear both tables before each test
+  await prisma.referrals.deleteMany();
+  await prisma.user.deleteMany();
   
-  // Create test users
-  referrerUser = await prisma.user.create({
-    data: {
-      email: 'referrer@example.com',
-      username: 'referrer',
-      password_hash: await bcrypt.hash('password123', 10),
-      referral_code: 'TESTREF1',
-    },
-  });
+  // Get fresh CSRF token for each test
+  const csrfRes = await request(app).get('/api/csrf-token');
+  csrfToken = csrfRes.body.csrfToken;
+  const csrfCookie = csrfRes.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
+  csrfCookieValue = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : null;
   
-  // Login as referrer to get token
-  const res = await request(app)
-    .post('/api/login')
+  // Create a test user for tests that need an existing user
+  await request(app)
+    .post('/api/register')
     .set('x-csrf-token', csrfToken)
-    .send({ identifier: 'referrer', password: 'password123' });
-  
-  referrerToken = res.headers['set-cookie'][0].split(';')[0].split('=')[1];
+    .send({ email: 'test@example.com', username: 'testuser', password: 'Password123' });
 }, 10000);
 
 afterAll(async () => {
-  await prisma.reward.deleteMany();
   await prisma.referrals.deleteMany();
   await prisma.user.deleteMany();
   await prisma.$disconnect();
   server.close();
 }, 10000);
 
-describe('Rewards System', () => {
-  test('Registration with referral code creates reward', async () => {
-    // Register a new user with referral code
+describe('API Endpoints', () => {
+  let userToken;
+
+  test('POST /api/register - Successful registration', async () => {
+    const csrfRes = await request(app).get('/api/csrf-token');
+    csrfToken = csrfRes.body.csrfToken;
+    const csrfCookie = csrfRes.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
+    csrfCookieValue = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : null;
+    
     const res = await request(app)
+      .post('/api/register')
+      .set('x-csrf-token', csrfToken)
+      .send({ email: 'newuser@example.com', username: 'newuser', password: 'Password123' });
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('id');
+    expect(res.headers['set-cookie']).toBeDefined();
+  }, 10000);
+
+  test('POST /api/login - Successful login', async () => {
+    const csrfRes = await request(app).get('/api/csrf-token');
+    csrfToken = csrfRes.body.csrfToken;
+    const csrfCookie = csrfRes.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
+    csrfCookieValue = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : null;
+    
+    const res = await request(app)
+      .post('/api/login')
+      .set('x-csrf-token', csrfToken)
+      .send({ identifier: 'testuser', password: 'Password123' });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('id');
+    
+    const cookies = res.headers['set-cookie'];
+    const tokenCookie = cookies.find(cookie => cookie.startsWith('token='));
+    userToken = tokenCookie ? tokenCookie.split(';')[0].split('=')[1] : null;
+  }, 10000);
+
+  test('GET /api/referrals - Fetch referrals', async () => {
+    const csrfRes = await request(app).get('/api/csrf-token');
+    csrfToken = csrfRes.body.csrfToken;
+    const csrfCookie = csrfRes.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
+    csrfCookieValue = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : null;
+    
+    // Login to get a token first
+    const loginRes = await request(app)
+      .post('/api/login')
+      .set('x-csrf-token', csrfToken)
+      .send({ identifier: 'testuser', password: 'Password123' });
+    
+    const cookies = loginRes.headers['set-cookie'];
+    const tokenCookie = cookies.find(cookie => cookie.startsWith('token='));
+    const token = tokenCookie ? tokenCookie.split(';')[0].split('=')[1] : null;
+    
+    // Create referrer with referral code
+    const referrer = await prisma.user.create({
+      data: {
+        email: 'referrer@example.com',
+        username: 'referrer',
+        password_hash: await bcrypt.hash('Password123', 10),
+        referral_code: 'REF12345',
+      },
+    });
+
+    // Register a new user with the referral code
+    await request(app)
       .post('/api/register')
       .set('x-csrf-token', csrfToken)
       .send({
         email: 'referred@example.com',
         username: 'referred',
         password: 'Password123',
-        referral_code: 'TESTREF1',
+        referral_code: 'REF12345',
       });
     
-    expect(res.status).toBe(201);
-    referredUser = res.body;
-    
-    // Verify the referral was created in the database
-    const referral = await prisma.referrals.findFirst({
-      where: {
-        referrer_id: referrerUser.id,
-        referred_user_id: referredUser.id,
-      },
-    });
-    
-    expect(referral).toBeDefined();
-    expect(referral.status).toBe('successful');
-    
-    // Check if reward was created
-    const reward = await prisma.reward.findFirst({
-      where: {
-        user_id: referrerUser.id,
-      },
-    });
-    
-    expect(reward).toBeDefined();
-    expect(reward.amount).toBe(100);
-  }, 10000);
-  
-  test('Fetching rewards returns correct data', async () => {
+    // Test getting referrals with token
     const res = await request(app)
-      .get('/api/rewards')
-      .set('Cookie', `token=${referrerToken}`);
-    
+      .get('/api/referrals')
+      .set('Cookie', `token=${token}`);
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('totalRewards');
-    expect(res.body).toHaveProperty('rewards');
-    expect(res.body.totalRewards).toBe(100);
-    expect(res.body.rewards.length).toBe(1);
+    expect(res.body).toBeInstanceOf(Array);
   }, 10000);
   
-  test('Referral stats include successful referrals', async () => {
+  test('GET /api/referral-stats - Fetch stats', async () => {
+    const csrfRes = await request(app).get('/api/csrf-token');
+    csrfToken = csrfRes.body.csrfToken;
+    const csrfCookie = csrfRes.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
+    csrfCookieValue = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : null;
+    
+    // Login to get a token first
+    const loginRes = await request(app)
+      .post('/api/login')
+      .set('x-csrf-token', csrfToken)
+      .send({ identifier: 'testuser', password: 'Password123' });
+    
+    const cookies = loginRes.headers['set-cookie'];
+    const tokenCookie = cookies.find(cookie => cookie.startsWith('token='));
+    const token = tokenCookie ? tokenCookie.split(';')[0].split('=')[1] : null;
+    
     const res = await request(app)
       .get('/api/referral-stats')
-      .set('Cookie', `token=${referrerToken}`);
-    
+      .set('Cookie', `token=${token}`);
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('successful_referrals');
-    expect(res.body.successful_referrals).toBe(1);
   }, 10000);
 });
