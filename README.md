@@ -2,44 +2,44 @@
 
 This is a backend implementation for a Linktree-like service with a built-in referral system, user authentication, and rewards.
 
-## Features
+## Features ✨
 
-- User registration and authentication
-- JWT-based authentication
-- Secure password handling (bcrypt)
-- Referral system with unique codes
-- Rewards for successful referrals
-- Password reset with email verification
-- Rate limiting for sensitive endpoints
-- CSRF protection
-- Caching for improved performance
-- Comprehensive test suite
+- User registration and authentication 🔐
+- JWT-based authentication 🔑
+- Secure password handling (bcrypt) 🔒
+- Referral system with unique codes 🔗
+- Rewards for successful referrals 🎁
+- Password reset with email verification 📧
+- Rate limiting for sensitive endpoints 🚦
+- CSRF protection 🛡️
+- Caching for improved performance ⚡
+- Comprehensive test suite 🧪
 
-## API Endpoints
+## API Endpoints 📡
 
-### Authentication
+### Authentication 🔑
 
 - `POST /api/register` - Register a new user
 - `POST /api/login` - Authenticate user
 - `POST /api/forgot-password` - Request password reset
 - `POST /api/reset-password` - Reset password with token
 
-### Referrals
+### Referrals 🔗
 
 - `GET /api/referrals` - Get list of referrals made by the user
 - `GET /api/referral-stats` - Get statistics about user's referrals
 
-### Rewards
+### Rewards 🎁
 
 - `GET /api/rewards` - Get user's rewards
 
-### Security
+### Security 🛡️
 
 - `GET /api/csrf-token` - Get CSRF token for secure form submission
 
-## Setup
+## Setup 🛠️
 
-1. Clone the repository
+1. Clone the repository 📂
 2. Install dependencies:
    ```
    npm install
@@ -62,7 +62,7 @@ This is a backend implementation for a Linktree-like service with a built-in ref
    npm start
    ```
 
-## Testing
+## Testing 🧪
 
 Run the test suite:
 
@@ -70,9 +70,9 @@ Run the test suite:
 npm test
 ```
 
-## Database Schema
+## Database Schema 🗄️
 
-### Users
+### Users 👤
 - id (PK)
 - email (unique)
 - username (unique)
@@ -80,31 +80,31 @@ npm test
 - referral_code (unique)
 - created_at
 
-### Referrals
+### Referrals 🔗
 - id (PK)
 - referrer_id (FK -> Users.id)
 - referred_user_id (FK -> Users.id)
 - date_referred
 - status (pending, successful, expired)
 
-### Rewards
+### Rewards 🎁
 - id (PK)
 - user_id (FK -> Users.id)
 - amount
 - description
 - created_at
 
-## Security Features
+## Security Features 🛡️
 
-- Password hashing with bcrypt
-- JWT tokens for authentication
-- CSRF protection
-- Rate limiting
-- Secure cookies
-- Input validation
-- Error handling
+- Password hashing with bcrypt 🔒
+- JWT tokens for authentication 🔑
+- CSRF protection 🛡️
+- Rate limiting 🚦
+- Secure cookies 🍪
+- Input validation ✅
+- Error handling ⚠️
 
-## Packages Used
+## Packages Used 📦
 
 - Express - Web framework
 - Prisma - ORM for database access
